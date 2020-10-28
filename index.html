@@ -161,7 +161,7 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
           <a href="/archives">
-          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-count">4</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -207,6 +207,194 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2020/10/27/CS15-213labs-shell-lab/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/girl.png">
+      <meta itemprop="name" content="Duan Jiahua">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="ardxwe">
+    </span>
+
+    
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2020/10/27/CS15-213labs-shell-lab/" class="post-title-link" itemprop="url">CS15-213labs:shell lab</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-10-27 18:42:48" itemprop="dateCreated datePublished" datetime="2020-10-27T18:42:48+08:00">2020-10-27</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-10-28 17:26:32" itemprop="dateModified" datetime="2020-10-28T17:26:32+08:00">2020-10-28</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <h2 id="内容"><a href="#内容" class="headerlink" title="内容"></a>内容</h2><p>实现一个 Linux Shell</p>
+<p>主要功能:</p>
+<ul>
+<li>执行二进制文件</li>
+<li>作业控制(前后台切换, 前后台运行， 显示当前所有作业)</li>
+<li>支持简单的信号(SIGINT, SIGTSTP)</li>
+<li>IO重定向</li>
+</ul>
+<p>完整代码: <a target="_blank" rel="noopener" href="https://github.com/ArdxWe/CS15-213labs/blob/master/shlab-handout/tsh.c">code</a></p>
+<h2 id="前置知识"><a href="#前置知识" class="headerlink" title="前置知识"></a>前置知识</h2><p>我会将此次 lab 涉及到的一些核心知识进行简单的阐述</p>
+<ul>
+<li>Linux 信号</li>
+<li>io 重定向</li>
+<li>Linux 进程</li>
+</ul>
+<h3 id="Signal"><a href="#Signal" class="headerlink" title="Signal"></a>Signal</h3><h4 id="定义"><a href="#定义" class="headerlink" title="定义"></a>定义</h4><p>维基百科： 在计算机科学中，信号（英语：Signals）是Unix、类Unix以及其他POSIX兼容的操作系统中进程间通讯的一种有限制的方式。</p>
+<p>它是一种异步的通知机制，用来提醒进程一个事件已经发生。当一个信号发送给一个进程，操作系统中断了进程正常的控制流程，此时，任何非原子操作都将被中断。如果进程定义了信号的处理函数，那么它将被执行，否则就执行默认的处理函数。</p>
+<p>信号类似于中断，不同之处在于中断由处理器调解并由内核处理，而信号由内核调解(可能通过系统调用)并由进程处理。内核可以将中断作为信号传递给导致中断的进程(典型的例子有SIGSEGV、SIGBUS、SIGILL和SIGFPE)。</p>
+<p>所有的普通信号可以通过 <code>kill-l</code> 查看</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ardxwe@ardxwe ~$ <span class="built_in">kill</span> -l                                                       </span><br><span class="line">HUP INT QUIT ILL TRAP ABRT BUS FPE KILL USR1 SEGV USR2 PIPE ALRM TERM STKFLT CHLD CONT STOP TSTP TTIN TTOU URG XCPU XFSZ VTALRM PROF WINCH POLL PWR SYS</span><br></pre></td></tr></table></figure>
+
+<p>编号 1 - 31 是普通信号， 32 - 64 是实时信号， 普通信号不支持排队， 可能发生的情况是发送多次信号， 进程只收到了一次， 而实时信号支持排队， 保证所有的信号都将被处理而不会丢失， 通常用于用户。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">typedef</span> <span class="title">void</span><span class="params">(*<span class="keyword">sighandler_t</span>)</span><span class="params">(<span class="keyword">int</span>)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">sighandler_t</span> <span class="title">signal</span><span class="params">(<span class="keyword">int</span> signum, <span class="keyword">sighandler_t</span> handler)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>可以通过 <code>signal</code> 函数向信号 <code>signum</code> 绑定处理函数， 在执行某一个信号的信号处理函数期间， 收到同样的信号， 此信号会被阻塞。也就是不会被处理。</p>
+<h4 id="阻塞信号"><a href="#阻塞信号" class="headerlink" title="阻塞信号"></a>阻塞信号</h4><p>信号在内核中分为四类:</p>
+<ul>
+<li>信号递达 (delivery) 实际执行信号处理信号的动作。</li>
+<li>信号未决 (pending) 信号从产生到抵达之间的状态，信号产生了但是未处理。</li>
+<li>忽略，抵达之后的一种动作。</li>
+<li>阻塞 (block) 收到信号不立即处理，被阻塞的信号将保持未决状态，直到进程解除对此信号的阻塞，才执行抵达动作。</li>
+</ul>
+<p>每个信号都由两个标志位分别表示阻塞和未决，以及一个函数指针表示信号的处理动作。</p>
+<p><img src="/images/shell-lab-1.png" alt="信号内核实现"></p>
+<ul>
+<li>SIGHUP 未阻塞也未产生过，当它递达时执行默认处理动作。</li>
+<li>SIGINT 信号产生过，但正在被阻塞，所以暂时不能递达。虽然它的处理动作是忽略，但在没有解除阻塞之前不能忽略这个信号，因为进程仍有机会改变处理动作之后再解除阻塞。</li>
+<li>SIGQUIT 信号未产生过，一旦产生 SIGQUIT 信号将被阻塞，它的处理动作是用户自定义函数 sighandler。</li>
+</ul>
+<p>信号产生但是不立即处理，前提条件是要把它保存在 pending 表中，表明信号已经产生。</p>
+<p>也就是说， 内核根据信号对应的 block 和 pending 和 handle 来判断。</p>
+<table>
+<thead>
+<tr>
+<th align="center">block</th>
+<th align="center">pending</th>
+<th align="center">signal comes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">0</td>
+<td align="center">0</td>
+<td align="center">handle</td>
+</tr>
+<tr>
+<td align="center">1</td>
+<td align="center">0</td>
+<td align="center">pending = 1</td>
+</tr>
+<tr>
+<td align="center">1</td>
+<td align="center">1</td>
+<td align="center">throw away</td>
+</tr>
+</tbody></table>
+<h4 id="信号捕捉"><a href="#信号捕捉" class="headerlink" title="信号捕捉"></a>信号捕捉</h4><p>如果信号的处理动作是⽤户⾃定义函数,在信号递达时就调⽤这个函数,这称为捕捉信号。</p>
+<p><img src="/images/shell-lab-2.png" alt="内核捕捉信号"></p>
+<h4 id="信号集操作函数"><a href="#信号集操作函数" class="headerlink" title="信号集操作函数"></a>信号集操作函数</h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="comment">/* 所有信号的对应位清0 */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigemptyset</span><span class="params">(<span class="keyword">sigset_t</span> *<span class="built_in">set</span>)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* 设置所有的信号，包括系统支持的所有信号 */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigfillset</span><span class="params">(<span class="keyword">sigset_t</span> *<span class="built_in">set</span>)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* 在该信号集中添加有效信号 */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigaddset</span><span class="params">(<span class="keyword">sigset_t</span> *<span class="built_in">set</span>, <span class="keyword">int</span> signo)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* 在该信号集中删除有效信号 */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigdelset</span><span class="params">(<span class="keyword">sigset_t</span> *<span class="built_in">set</span>, <span class="keyword">int</span> signo)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* 判断一个信号集的有效信号中是否包含某种信号 */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigismember</span><span class="params">(<span class="keyword">const</span> <span class="keyword">sigset_t</span> *<span class="built_in">set</span>, <span class="keyword">int</span> signo)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * how:</span></span><br><span class="line"><span class="comment"> * SIG_BLOCK     信号屏蔽字是其当前信号屏蔽字和set指向信号集的并集，set包含了希望阻塞的信号</span></span><br><span class="line"><span class="comment"> * SIG_UNBLOCK   信号屏蔽字是其当前信号屏蔽字和set所指向信号集补集的交集，set包含了希望解除阻塞的信号</span></span><br><span class="line"><span class="comment"> * SIG_SETMASK   信号屏蔽字将被set指向的信号集的值代替</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigprocmask</span><span class="params">(<span class="keyword">int</span> how, <span class="keyword">const</span> <span class="keyword">sigset_t</span> *<span class="keyword">restrict</span> <span class="built_in">set</span>, <span class="keyword">sigset_t</span> *<span class="keyword">restrict</span> oset)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/*sigpending读取当前进程的未决信号集,通过set参数传出 */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sigpending</span><span class="params">(<span class="keyword">sigset_t</span> *<span class="built_in">set</span>)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<h4 id="一些例子"><a href="#一些例子" class="headerlink" title="一些例子"></a>一些例子</h4><h5 id="first"><a href="#first" class="headerlink" title="first"></a>first</h5><p>验证两点：</p>
+<ul>
+<li>当 <code>SIGINT</code> 被阻塞时， 来了一个 <code>SIGINT</code> 只会置 <code>pending</code> 为 1</li>
+<li>阻塞解除会执行 <code>siginthandle</code> 一次</li>
+</ul>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdbool.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">printsigset</span><span class="params">(<span class="keyword">const</span> <span class="keyword">sigset_t</span> *pset)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; <span class="number">64</span>; i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">if</span> (sigismember(pset, i + <span class="number">1</span>))</span><br><span class="line">            <span class="built_in">putchar</span>(<span class="string">&#x27;1&#x27;</span>);</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            <span class="built_in">putchar</span>(<span class="string">&#x27;0&#x27;</span>);</span><br><span class="line">        fflush(<span class="built_in">stdout</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;\n&quot;</span>);</span><br><span class="line">    fflush(<span class="built_in">stdout</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">siginthandle</span><span class="params">(<span class="keyword">int</span> sig)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;sigint handle call\n&quot;</span>);</span><br><span class="line">    sleep(<span class="number">1</span>);</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    signal(SIGINT, siginthandle);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">sigset_t</span> sigint, prev;</span><br><span class="line">    sigemptyset(&amp;sigint);</span><br><span class="line">    sigaddset(&amp;sigint, SIGINT);</span><br><span class="line">    sigprocmask(SIG_BLOCK, &amp;sigint, &amp;prev);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> count = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">while</span>(<span class="literal">true</span>) &#123;</span><br><span class="line">        <span class="keyword">sigset_t</span> now, pending;</span><br><span class="line"></span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">&quot;block   set:&quot;</span>);</span><br><span class="line">        fflush(<span class="built_in">stdout</span>);</span><br><span class="line">        sigprocmask(SIG_BLOCK, <span class="literal">NULL</span>, &amp;now);</span><br><span class="line">        printsigset(&amp;now);</span><br><span class="line">        sigpending(&amp;pending);</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">&quot;pending set:&quot;</span>);</span><br><span class="line">        fflush(<span class="built_in">stdout</span>);</span><br><span class="line">        printsigset(&amp;pending);</span><br><span class="line">        sleep(<span class="number">1</span>);</span><br><span class="line">        count++;</span><br><span class="line">        <span class="keyword">if</span> (count == <span class="number">5</span>) &#123;</span><br><span class="line">            sigprocmask(SIG_SETMASK, &amp;prev, <span class="literal">NULL</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">else</span> <span class="keyword">if</span> (count == <span class="number">10</span>) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>先阻塞 <code>SIGINT</code> 4秒， 每秒打印 block 和 pending， 然后解除 <code>SIGINT</code> 阻塞</p>
+<p>本地运行结果如下:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">ardxwe@ardxwe ~/github/CS15-213labs/shlab-handout/signaltest$ ./signal</span><br><span class="line">block   <span class="built_in">set</span>:0100000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">block   <span class="built_in">set</span>:0100000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">^Cblock   <span class="built_in">set</span>:0100000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0100000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">^C^Cblock   <span class="built_in">set</span>:0100000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0100000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">sigint handle call</span><br><span class="line">block   <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">block   <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">block   <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">block   <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">block   <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br><span class="line">pending <span class="built_in">set</span>:0000000000000000000000000000000000000000000000000000000000000000</span><br></pre></td></tr></table></figure>
+
+<p>第二次打印结束的时候， 输入 CTRL+C, <code>pending</code> 对应位变为 1, 之后还输入了两次 CTRL+C， <code>pending</code> 不变， 解除阻塞时执行一次处理函数， 非常自然。</p>
+<h5 id="second"><a href="#second" class="headerlink" title="second"></a>second</h5><p>验证：</p>
+<ul>
+<li>系统调用会被信号打断</li>
+<li>如果当前正在执行信号一的处理函数， 此时信号二来是有可能打断信号一处理函数， 去执行信号二处理函数的， 类似于中断嵌套</li>
+</ul>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdbool.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">siginthandle</span><span class="params">(<span class="keyword">int</span> sig)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;sigint handle call\n&quot;</span>);</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> rs = sleep(<span class="number">5</span>);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;remain seconds: %d\n&quot;</span>, rs);</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">sigtstphandle</span><span class="params">(<span class="keyword">int</span> sig)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;sigtstp handle call\n&quot;</span>);</span><br><span class="line">    sleep(<span class="number">1</span>);</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    signal(SIGINT, siginthandle);</span><br><span class="line">    signal(SIGTSTP, sigtstphandle);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">sigset_t</span> <span class="built_in">set</span>;</span><br><span class="line">    sigemptyset(&amp;<span class="built_in">set</span>);</span><br><span class="line">    sigaddset(&amp;<span class="built_in">set</span>, SIGINT);</span><br><span class="line">    sigaddset(&amp;<span class="built_in">set</span>, SIGTSTP);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> rs = sleep(<span class="number">5</span>);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;main routine remain seconds: %d\n&quot;</span>, rs);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注册 <code>SIGINT</code> <code>SIGTSTP</code> 处理函数， 主程序 sleep</p>
+<p>结果：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">ardxwe@ardxwe ~/github/CS15-213labs/shlab-handout/signaltest$ ./breaksyscl</span><br><span class="line">^Csigint handle call</span><br><span class="line">^Zsigtstp handle call</span><br><span class="line">remain seconds: 4</span><br><span class="line">main routine remain seconds: 3</span><br></pre></td></tr></table></figure>
+
+<h3 id="IO重定向"><a href="#IO重定向" class="headerlink" title="IO重定向"></a>IO重定向</h3><p><img src="/images/shell-lab-3.gif" alt="Linux文件描述符原理"></p>
+<p>0 代表 标准输入<br>1 代表 标准输出<br>2 代表 标准错误</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">dup</span><span class="params">(<span class="keyword">int</span> oldfd)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">dup2</span><span class="params">(<span class="keyword">int</span> oldfd, <span class="keyword">int</span> newfd)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>这些系统调用创建文件描述符 oldfd 的副本</p>
+<p><code>dup</code> 使用编号最小的未使用描述符作为新描述符</p>
+<p><code>dup2</code> 使newfd是oldfd的副本，如果有必要， 关闭 newfd</p>
+<p>创建进程时， 0, 1, 2 已经指向对应的打开文件表:</p>
+<p><img src="/images/shell-lab-4.jpg" alt="文件描述符初始状态"></p>
+<p>当进程执行 <code>dup(1)</code> :</p>
+<p><img src="/images/shell-lab-5.jpg" alt="执行dup(1)之后"></p>
+<p>执行 打开一个文件时， 指向一个新的打开文件表 :</p>
+<p><img src="/images/shell-lab-6.jpg" alt="打开文件"></p>
+<p>此时 dup(filefd, 1):</p>
+<p><img src="/images/shell-lab-7.jpg" alt="IO重定向"></p>
+<p>之后向标准输出写就是往文件写， 这就是 io重定向的原理</p>
+<h3 id="进程"><a href="#进程" class="headerlink" title="进程"></a>进程</h3><h4 id="定义-1"><a href="#定义-1" class="headerlink" title="定义"></a>定义</h4><p>维基百科： 进程（英语：process），是指计算机中已运行的程序。进程曾经是分时系统的基本运作单位。在面向进程设计的系统（如早期的UNIX，Linux 2.4及更早的版本）中，进程是程序的基本执行实体；在面向线程设计的系统（如当代多数操作系统、Linux 2.6及更新的版本）中，进程本身不是基本运行单位，而是线程的容器。程序本身只是指令、数据及其组织形式的描述，进程才是程序（那些指令和数据）的真正运行实例。若干进程有可能与同一个程序相关系，且每个进程皆可以同步（循序）或异步（平行）的方式独立运行。现代计算机系统可在同一段时间内以进程的形式将多个程序加载到存储器中，并借由时间共享（或称时分复用），以在一个处理器上表现出同时（平行性）运行的感觉。同样的，使用多线程技术（多线程即每一个线程都代表一个进程内的一个独立执行上下文）的操作系统或计算机体系结构，同样程序的平行线程，可在多CPU主机或网络上真正同时运行（在不同的CPU上）。</p>
+<p>简单说， 当我们运行一个可执行文件 <code>./a.out</code> 时， 操作系统就创建了进程</p>
+<h4 id="fork"><a href="#fork" class="headerlink" title="fork"></a>fork</h4><p>在 Linux 中， 当我们调用 fork, 操作系统帮我们产生一个新的进程， 和原先的进程几乎完全相同</p>
+<p>原先进程称为父进程， 派生的进程称为子进程</p>
+<p>Linux 还采用了写时复制， 当子进程创建， 并不会完全拷贝内存， 而是共享内存页， 只有当父子进程写的时候， 才会给子进程分配新的内存页， 然后才会执行对应的写操作</p>
+<p><img src="/images/shell-lab-8.jpg" alt="fork"></p>
+<p>父子进程共享内存， 当然也共享代码段， 父子进程如何执行代码段？</p>
+<p>检查 fork 返回值， 子进程返回 0, 父进程返回子进程 pid， 这样做的理由是， 子进程可以调用 getppid 获取父进程 pid， 一个进程只能有一个父进程</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">pid_t</span> pid;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span>((pid=fork()) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;fork error\n&quot;</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">else</span> <span class="keyword">if</span> (pid == <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="comment">/* child process */</span></span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="comment">/* father process */</span></span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>有了这些前置知识， shell 的实现就会很容易， 见下章</p>
+<p>参考:</p>
+<p><a target="_blank" rel="noopener" href="https://gohalo.me/post/kernel-signal-introduce.html">https://gohalo.me/post/kernel-signal-introduce.html</a></p>
+<p><a target="_blank" rel="noopener" href="http://c.biancheng.net/view/3066.html">http://c.biancheng.net/view/3066.html</a></p>
+<p><a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E8%A1%8C%E7%A8%8B">https://zh.wikipedia.org/wiki/%E8%A1%8C%E7%A8%8B</a></p>
+<p><a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/Signal_(%E8%BB%9F%E4%BB%B6)">https://zh.wikipedia.org/wiki/Signal_(%E8%BB%9F%E4%BB%B6)</a></p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://yoursite.com/2020/10/10/CS15-213labs-cache-lab/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -223,7 +411,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2020/10/10/CS15-213labs-cache-lab/" class="post-title-link" itemprop="url">CS15-213labs:cache lab</a>
+            <a href="/2020/10/10/CS15-213labs-cache-lab/" class="post-title-link" itemprop="url">CS15-213labs-cache-lab</a>
         </h2>
 
         <div class="post-meta">
@@ -240,7 +428,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-10-27 18:38:52" itemprop="dateModified" datetime="2020-10-27T18:38:52+08:00">2020-10-27</time>
+                <time title="修改时间：2020-10-27 18:45:30" itemprop="dateModified" datetime="2020-10-27T18:45:30+08:00">2020-10-27</time>
               </span>
 
           
@@ -325,7 +513,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2020/09/25/CS15-213labs-attack-lab/" class="post-title-link" itemprop="url">CS15-213labs:attack lab</a>
+            <a href="/2020/09/25/CS15-213labs-attack-lab/" class="post-title-link" itemprop="url">CS15-213labs-attack-lab</a>
         </h2>
 
         <div class="post-meta">
@@ -342,7 +530,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-09-26 17:35:41" itemprop="dateModified" datetime="2020-09-26T17:35:41+08:00">2020-09-26</time>
+                <time title="修改时间：2020-10-27 18:44:43" itemprop="dateModified" datetime="2020-10-27T18:44:43+08:00">2020-10-27</time>
               </span>
 
           
@@ -483,7 +671,7 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">➜  target1 git:(master) cat level5.txt | ./hex2raw | ./rtarget -q</span><br><span class="line">Cookie: 0x59b997fa</span><br><span class="line">Type string:Touch3!: You called touch3(<span class="string">&quot;59b997fa&quot;</span>)</span><br><span class="line">Valid solution <span class="keyword">for</span> level 3 with target rtarget</span><br><span class="line">PASS: Would have posted the following:</span><br><span class="line">        user id bovik</span><br><span class="line">        course  15213-f15</span><br><span class="line">        lab     attacklab</span><br><span class="line">        result  1:PASS:0xffffffff:rtarget:3:00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 06 1A 40 00 00 00 00 00 A2 19 40 00 00 00 00 00 AB 19 40 00 00 00 00 00 48 00 00 00 00 00 00 00 DD 19 40 00 00 00 00 00 34 1A 40 00 00 00 00 00 13 1A 40 00 00 00 00 00 D6 19 40 00 00 00 00 00 A2 19 40 00 00 00 00 00 FA 18 40 00 00 00 00 00 35 39 62 39 39 37 66 61 00</span><br></pre></td></tr></table></figure>
 
 <p>全文完</p>
-<p>任何建议或者疑问你可以发我邮件: <a href="mailto:&#x61;&#114;&#x64;&#x78;&#x77;&#x65;&#64;&#x67;&#109;&#x61;&#x69;&#108;&#46;&#x63;&#x6f;&#109;">&#x61;&#114;&#x64;&#x78;&#x77;&#x65;&#64;&#x67;&#109;&#x61;&#x69;&#108;&#46;&#x63;&#x6f;&#109;</a></p>
+<p>任何建议或者疑问你可以发我邮件: <a href="mailto:&#x61;&#114;&#x64;&#120;&#x77;&#x65;&#x40;&#x67;&#x6d;&#97;&#x69;&#x6c;&#x2e;&#x63;&#111;&#x6d;">&#x61;&#114;&#x64;&#120;&#x77;&#x65;&#x40;&#x67;&#x6d;&#97;&#x69;&#x6c;&#x2e;&#x63;&#111;&#x6d;</a></p>
 
       
     </div>
@@ -519,7 +707,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2020/09/20/CS15-213labs-bomb-lab/" class="post-title-link" itemprop="url">CS15-213labs:bomb lab</a>
+            <a href="/2020/09/20/CS15-213labs-bomb-lab/" class="post-title-link" itemprop="url">CS15-213labs-bomb-lab</a>
         </h2>
 
         <div class="post-meta">
@@ -536,7 +724,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-09-26 17:35:31" itemprop="dateModified" datetime="2020-09-26T17:35:31+08:00">2020-09-26</time>
+                <time title="修改时间：2020-10-27 18:45:50" itemprop="dateModified" datetime="2020-10-27T18:45:50+08:00">2020-10-27</time>
               </span>
 
           
@@ -720,7 +908,7 @@
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">➜  bomb git:(master) ./bomb</span><br><span class="line">Welcome to my fiendish little bomb. You have 6 phases with</span><br><span class="line"><span class="built_in">which</span> to blow yourself up. Have a nice day!</span><br><span class="line">Border relations with Canada have never been better.</span><br><span class="line">Phase 1 defused. How about the next one?</span><br><span class="line">1 2 4 8 16 32</span><br><span class="line">That<span class="string">&#x27;s number 2.  Keep going!</span></span><br><span class="line"><span class="string">7 327</span></span><br><span class="line"><span class="string">Halfway there!</span></span><br><span class="line"><span class="string">7 0</span></span><br><span class="line"><span class="string">So you got that one.  Try this one.</span></span><br><span class="line"><span class="string">9?&gt;567</span></span><br><span class="line"><span class="string">Good work!  On to the next...</span></span><br><span class="line"><span class="string">4 3 2 1 6 5</span></span><br><span class="line"><span class="string">Congratulations! You&#x27;</span>ve defused the bomb!</span><br></pre></td></tr></table></figure>
 
 <p>全文完</p>
-<p>任何建议或者疑问你可以发我邮件: <a href="mailto:&#x61;&#x72;&#100;&#x78;&#x77;&#101;&#x40;&#103;&#109;&#97;&#x69;&#x6c;&#46;&#x63;&#111;&#x6d;">&#x61;&#x72;&#100;&#x78;&#x77;&#101;&#x40;&#103;&#109;&#97;&#x69;&#x6c;&#46;&#x63;&#111;&#x6d;</a></p>
+<p>任何建议或者疑问你可以发我邮件: <a href="mailto:&#97;&#114;&#x64;&#120;&#119;&#101;&#x40;&#x67;&#x6d;&#x61;&#105;&#x6c;&#46;&#99;&#111;&#x6d;">&#97;&#114;&#x64;&#120;&#119;&#101;&#x40;&#x67;&#x6d;&#x61;&#105;&#x6c;&#46;&#99;&#111;&#x6d;</a></p>
 
       
     </div>

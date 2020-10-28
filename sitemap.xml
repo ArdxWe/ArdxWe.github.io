@@ -2,6 +2,20 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>http://yoursite.com/2020/10/27/CS15-213labs-shell-lab/</loc>
+    
+    <lastmod>2020-10-28</lastmod>
+    
+  </url>
+  
+  <url>
+    <loc>http://yoursite.com/2020/09/20/CS15-213labs-bomb-lab/</loc>
+    
+    <lastmod>2020-10-27</lastmod>
+    
+  </url>
+  
+  <url>
     <loc>http://yoursite.com/2020/10/10/CS15-213labs-cache-lab/</loc>
     
     <lastmod>2020-10-27</lastmod>
@@ -11,21 +25,14 @@
   <url>
     <loc>http://yoursite.com/2020/09/25/CS15-213labs-attack-lab/</loc>
     
-    <lastmod>2020-09-26</lastmod>
-    
-  </url>
-  
-  <url>
-    <loc>http://yoursite.com/2020/09/20/CS15-213labs-bomb-lab/</loc>
-    
-    <lastmod>2020-09-26</lastmod>
+    <lastmod>2020-10-27</lastmod>
     
   </url>
   
 
   <url>
     <loc>http://yoursite.com/</loc>
-    <lastmod>2020-10-27</lastmod>
+    <lastmod>2020-10-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
@@ -33,7 +40,7 @@
   
   <url>
     <loc>http://yoursite.com/tags/CSAPP/</loc>
-    <lastmod>2020-10-27</lastmod>
+    <lastmod>2020-10-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
   </url>
