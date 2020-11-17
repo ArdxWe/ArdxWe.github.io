@@ -161,7 +161,7 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
           <a href="/archives">
-          <span class="site-state-item-count">5</span>
+          <span class="site-state-item-count">6</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -203,6 +203,158 @@
 
         <div class="content index posts-expand">
           
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2020/11/15/RISC-V-Zfinx-%E6%89%A9%E5%B1%95%E5%AE%9E%E7%8E%B0%E5%9C%A8-QEMU-%E4%B8%AD%E7%9A%84%E5%AE%9E%E7%8E%B0%E5%88%86%E6%9E%90/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/girl.png">
+      <meta itemprop="name" content="Duan Jiahua">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="ardxwe">
+    </span>
+
+    
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2020/11/15/RISC-V-Zfinx-%E6%89%A9%E5%B1%95%E5%AE%9E%E7%8E%B0%E5%9C%A8-QEMU-%E4%B8%AD%E7%9A%84%E5%AE%9E%E7%8E%B0%E5%88%86%E6%9E%90/" class="post-title-link" itemprop="url">RISC-V Zfinx 扩展实现在 QEMU 中的实现分析</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-11-15 21:26:05" itemprop="dateCreated datePublished" datetime="2020-11-15T21:26:05+08:00">2020-11-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-11-17 19:02:44" itemprop="dateModified" datetime="2020-11-17T19:02:44+08:00">2020-11-17</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <h2 id="RISC-V"><a href="#RISC-V" class="headerlink" title="RISC-V"></a>RISC-V</h2><p>RISC-V 是一个基于 RISC 的开源指令集架构</p>
+<h3 id="ISA"><a href="#ISA" class="headerlink" title="ISA"></a>ISA</h3><p><img src="/images/RISCV-1.png" alt="RISC-V unprivileged architecture"></p>
+<p>基本 RISC-V ISA：</p>
+<ul>
+<li>RV32I： 基本整数指令集， 32 bits</li>
+<li>RV64I： 基本整数指令集， 64 bits</li>
+<li>RV32E： 基本整数指令集， 32 bits, 16 registers</li>
+<li>RV128I: 基本整数指令集， 128 bits</li>
+</ul>
+<p>扩展：</p>
+<ul>
+<li>F: 单精度浮点扩展</li>
+<li>D： 双精度浮点扩展</li>
+</ul>
+<p>…</p>
+<h3 id="寄存器模型"><a href="#寄存器模型" class="headerlink" title="寄存器模型"></a>寄存器模型</h3><p>整数寄存器：</p>
+<p><img src="/images/int-registers.png" alt="RISC-V base unprivileged integer register state"></p>
+<p>RV32I 基本整数指令集：</p>
+<p><img src="/images/intisns.png" alt="base instruction formats showing immediate variants"></p>
+<p>浮点寄存器：</p>
+<p><img src="/images/float-regs.png" alt="float registers"></p>
+<p>RV32F 扩展指令(26条):</p>
+<p><img src="/images/float-isns.png" alt="float instructions"></p>
+<h2 id="Zfinx"><a href="#Zfinx" class="headerlink" title="Zfinx"></a>Zfinx</h2><ul>
+<li>将所有的浮点寄存器扩展的 浮点寄存器 f 改为 整数寄存器 x</li>
+<li>和之前相比， 仅汇编语法变化， 对应二进制码不变</li>
+</ul>
+<h2 id="QEMU"><a href="#QEMU" class="headerlink" title="QEMU"></a>QEMU</h2><ul>
+<li>Quick Emulator 的缩写</li>
+<li>开源虚拟化软件</li>
+<li>可以模拟一些特定的处理器架构， 通过 TCG(Tiny Code Generator) 动态转换机器代码</li>
+</ul>
+<h3 id="原理"><a href="#原理" class="headerlink" title="原理"></a>原理</h3><p><img src="/images/TCG.png" alt="QEMU工作原理"></p>
+<ul>
+<li>TARGET: QEMU 所模拟的处理器架构</li>
+<li>HOST： QEMU 所真正运行所在的机器架构</li>
+<li>TCG： target 代码的动态转换执行者</li>
+</ul>
+<p>QEMU 通过将 GUEST CODE 转化为 HOST CODE来进行模拟， 转换工作分为两部分：</p>
+<ul>
+<li>TARGET 代码块 ——-&gt; TCG ops(平台独立的中间符号)</li>
+<li>TCG ops    ———&gt; Host code</li>
+</ul>
+<h3 id="动态转换"><a href="#动态转换" class="headerlink" title="动态转换"></a>动态转换</h3><p><img src="/images/dt1.png" alt="Dynamic translation1"></p>
+<p><img src="/images/dt2.png" alt="Dynamic translation2"></p>
+<p><img src="/images/dt3.png" alt="Dynamic translation3"></p>
+<p>也就是说：</p>
+<ul>
+<li>以 gen 起始的函数用来生成 TCG ops</li>
+<li>以 tcg_gen 起始的函数用来生成 Host code</li>
+</ul>
+<p>举个例子:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">bool</span> <span class="title">trans_flw</span><span class="params">(DisasContext *ctx, arg_flw *a)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    REQUIRE_FPU;</span><br><span class="line">    REQUIRE_EXT(ctx, RVF);</span><br><span class="line">    TCGv t0 = tcg_temp_new();</span><br><span class="line">    gen_get_gpr(t0, a-&gt;rs1);</span><br><span class="line">    tcg_gen_addi_tl(t0, t0, a-&gt;imm);</span><br><span class="line"></span><br><span class="line">    tcg_gen_qemu_ld_i64(cpu_fpr[a-&gt;rd], t0, ctx-&gt;mem_idx, MO_TEUL);</span><br><span class="line">    gen_nanbox_s(cpu_fpr[a-&gt;rd], cpu_fpr[a-&gt;rd]);</span><br><span class="line"></span><br><span class="line">    tcg_temp_free(t0);</span><br><span class="line">    mark_fs_dirty(ctx);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>此函数所在位置： qemu/target/riscv/insn_trans/trans_rvf.c.inc</p>
+<ul>
+<li>gen_get_gpr: 读 rs1 寄存器到 t0</li>
+<li>tcg_gen_addi_tl: t0 加 立即数 到 t0</li>
+<li>tcg_gen_qemu_ld_i64: 寻址 t0 到 目的寄存器</li>
+</ul>
+<h3 id="源码结构"><a href="#源码结构" class="headerlink" title="源码结构"></a>源码结构</h3><table>
+<thead>
+<tr>
+<th>文件夹</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>/hw/</td>
+<td>模拟硬件</td>
+</tr>
+<tr>
+<td>/target/xyz/</td>
+<td>被模拟的 xyz 体系结构代码块转换为 TCG ops 的具体实现(TCG 前端)</td>
+</tr>
+<tr>
+<td>/TCG/xyz/</td>
+<td>TCG ops 转化为运行 QEMU 的体系架构的机器码的具体实现(TCG 后端)</td>
+</tr>
+</tbody></table>
+<h3 id="在-QEMU-中如何实现-Zfinx"><a href="#在-QEMU-中如何实现-Zfinx" class="headerlink" title="在 QEMU 中如何实现 Zfinx"></a>在 QEMU 中如何实现 Zfinx</h3><p><a target="_blank" rel="noopener" href="https://github.com/riscv/riscv-zfinx/blob/master/Zfinx_spec.adoc">RISCV ZFinx</a></p>
+<ul>
+<li>当 QEMU 检测到 guest code 实现 Zfinx 扩展时， 替换浮点寄存器为整数寄存器(似乎生成的后端机器码所操作的寄存器只是内存指定位置)</li>
+<li>remove all floating point load (e.g. FLW) store (e.g. FSW) and register move (e.g. FMV.X.W) encodings as the integer versions of these are required instead</li>
+<li>更改 NaN-boxing</li>
+<li>使用特定的 浮点指令进行测试 <a target="_blank" rel="noopener" href="https://github.com/riscv/riscv-tests/tree/master/isa">测试参考</a></li>
+<li>前提与难点: 深刻理解 QEMU 动态翻译源代码部分细节</li>
+</ul>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
       
   
   
